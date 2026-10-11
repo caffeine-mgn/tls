@@ -1,9 +1,14 @@
-.gradle/
+# Build outputs
 build/
-.kotlin/
+.gradle/
+
+# IDE
 .idea/
 *.iml
-.DS_Store
+.kotlin/
+
+# Local config
 local.properties
-.cortexkit/
-verification/
+
+# One-off cert generation utility (not part of the library)
+scripts/

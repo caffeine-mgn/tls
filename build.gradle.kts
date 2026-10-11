@@ -36,7 +36,7 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.bouncycastle.bcpkix)
         }
-        // linuxX64 pulls in OpenSSL via cinterop + system libssl/libcrypto
+        // linuxX64 pulls in OpenSSL via cinterop + prebuilt libssl/libcrypto
         linuxX64Main.dependencies { }
         linuxX64Test.dependencies {
             implementation(kotlin("test"))
@@ -54,10 +54,6 @@ kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarge
                 defFile(file("src/nativeInterop/cinterop/openssl.def"))
                 includeDirs("/usr/include")
                 compilerOpts("-I/usr/include")
-                // The cinterop itself doesn't need to link — the cinterops
-                // pull in the pw_* shim definitions. We link the openssl
-                // binaries separately to avoid the GLIBC version-mismatch
-                // the system .so causes.
                 linkerOpts(opensslLibSsl, opensslLibCrypto)
             }
         }
