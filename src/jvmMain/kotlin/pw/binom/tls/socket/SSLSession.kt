@@ -55,12 +55,24 @@ actual class SSLSession internal constructor(
     }
 
     actual fun writeApp(src: ByteArray, offset: Int, length: Int): SSLStatus {
-        appOut.compact()
-        appOut.limit(appOut.capacity())
-        appOut.put(src, offset, length)
+        // If we already have unflipped data in appOut from a previous call
+        // that the engine didn't consume, do NOT re-put src. The caller
+        // must advance their position based on the previous bytesConsumed.
+        // Re-putting would duplicate the data, and the engine would wrap
+        // (and the peer would receive) the same bytes multiple times.
+        val appOutEmpty = appOut.position() == 0
+        if (appOutEmpty) {
+            appOut.clear()
+            appOut.put(src, offset, length)
+        }
         appOut.flip()
         val r = engine.wrap(appOut, netOut)
         val state = mapStatus(r)
+        if (r.bytesConsumed() == appOut.limit()) {
+            // engine consumed all the data; reset for next call
+            appOut.compact()
+            appOut.limit(appOut.capacity())
+        }
         return SSLStatus(state, r.bytesConsumed())
     }
 

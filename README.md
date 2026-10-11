@@ -107,7 +107,7 @@ aarch64, etc.) never enter the parse.
 > primitives only. Switching to it for this library would require
 > additional plumbing (extract the `.a`, link it next to a libssl that
 > matches the same GLIBC). Documented as a follow-up, not required for
-> the current 4 jvmTest + 4 androidUnitTest + 3 linuxX64Test green-build state.
+> the current 5 jvmTest + 5 androidUnitTest + 3 linuxX64Test green-build state.
 
 ## Tests
 
@@ -115,6 +115,7 @@ aarch64, etc.) never enter the parse.
 |-----------------------------------|------------|---------|-----------------|---------------|
 | `TlsConnectionKotlinxIoTest`      | ✅          | ✅       | ✅              | ✅             |
 | `SslContextConfigTest`            | -          | ✅       | ✅              | -             |
+| `TlsEndToEndTest` (e2e over socket) | -        | ✅       | ✅              | -             |
 | `NativeSslContextSmokeTest`       | -          | -       | -              | ✅             |
 
 The `NativeSslContextSmokeTest` verifies the native cinterop layer

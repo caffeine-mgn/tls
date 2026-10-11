@@ -174,7 +174,7 @@ dokka {
 }
 
 tasks.withType<Test>().configureEach {
-    useJUnit()
+    useJUnitPlatform()
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = true
