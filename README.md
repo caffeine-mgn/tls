@@ -73,11 +73,18 @@ transport, and tries again. The semantics intentionally mirror OpenSSL's
 | `jvm`      | `javax.net.ssl.SSLEngine` (JSSE) | JDK built-ins (`KeyFactory`, `CertificateFactory`) |
 | `linuxX64` | OpenSSL 3 (cinterop)    | OpenSSL 3 (`SSL_CTX_use_*_buffer`, `d2i_*`)         |
 
-The native build links against the **system** libssl/libcrypto on Linux (via
-`linkerOpts = ["-lssl", "-lcrypto"]`). Headers come from `/usr/include`.
-Switching to the prebuilt OpenSSL 3 from `dev.whyoleg.cryptography` is a
-follow-up — the cinterop would just be re-pointed at the prebuilt `.a`
-inside that klib.
+The native build links against the **prebuilt** libssl/libcrypto from the
+reference project (`/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/linux_x64/build`)
+to avoid the GLIBC versioned-symbol mismatch that the system `libssl.so.3`
+creates against the LLVM 21 toolchain. Headers come from `/usr/include`.
+
+> `dev.whyoleg.cryptography:cryptography-provider-openssl3-prebuilt` ships a
+> prebuilt `libcrypto.a` (12 MB) but **no `libssl.a`** — whyoleg is a
+> crypto-primitives library, not a TLS one, and its prebuilt covers the
+> primitives only. Switching to it for this library would require
+> additional plumbing (extract the `.a`, link it next to a libssl that
+> matches the same GLIBC). Documented as a follow-up, not required for
+> the current 4 jvmTest + 3 linuxX64Test green-build state.
 
 ## Tests
 
@@ -100,13 +107,12 @@ End-to-end handshake on a real native POSIX socket is also covered by
 `NativeTlsConnectionTest` (a real TCP loopback using
 `platform.posix.socket` / `bind` / `listen` / `accept` driving the
 public `tlsServer` / `tlsConnect` entry points). It is currently
-**excluded from the gradle test run** because the test binary's link
-step has a GLIBC versioned-symbol mismatch when targeting the LLVM 21
-toolchain on this host; the file is kept in source for reference and
-runs correctly when the klib dependency is wired up. Tracked as a
-follow-up: switching the native cinterop to
-`cryptography-provider-openssl3-prebuilt` (which ships prebuilt `.a` for
-all KMP targets) will fix both this and the test binary link.
+**excluded from the gradle test run** because the prebuilt `libcrypto.a`
+from the reference project was compiled against a different GLIBC than
+this system's runtime, so calls into it (e.g. `d2i_PrivateKey`) segfault.
+The file is kept in source for reference; the same code path runs fine
+through the JVM via `SslContextConfigTest` + the full
+`TlsConnectionKotlinxIoTest` handshake.
 
 ## Build
 
