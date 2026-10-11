@@ -1,0 +1,26 @@
+[*.{kt,kts}]
+root = true
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+max_line_length = 120
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Конфликтуют с Kotlin-идиомами:
+ktlint_standard_function-signature = disabled
+ktlint_standard_class-signature = disabled
+ktlint_standard_parameter-list-wrapping = disabled
+ktlint_standard_argument-list-wrapping = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_multiline-expression-wrapping = disabled
+ktlint_standard_wrapping = disabled
+ktlint_standard_blank-line-before-declaration = disabled
+ktlint_standard_no-consecutive-comments = disabled
+ktlint_standard_no-empty-first-line-in-class-body = disabled
+
+# Оставить включёнными (качество кода):
+# ktlint_standard_no-unused-imports       (НЕ отключай)
+# ktlint_standard_final-newline           (НЕ отключай)

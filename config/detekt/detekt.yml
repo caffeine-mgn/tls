@@ -1,0 +1,12 @@
+complexity:
+  TooManyFunctions:
+    allowedFunctionsPerClass: 25
+style:
+  MagicNumber:
+    active: false
+  ReturnCount:
+    active: false
+  MaxLineLength:
+    active: false
+  UnusedPrivateMember:
+    active: false

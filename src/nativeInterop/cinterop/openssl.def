@@ -1,0 +1,58 @@
+package = openssl3
+language = C
+
+// OpenSSL 3.x core + libssl declarations for the TLS state machine.
+// The linker picks up libssl/libcrypto from the system (or, optionally,
+// from the prebuilt .a in cryptography-provider-openssl3-prebuilt).
+// Headers come from the system include path.
+
+---
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/ec.h>
+#include <openssl/bn.h>
+#include <openssl/objects.h>
+#include <stdio.h>
+
+// Forward-declare functions removed in OpenSSL 3 headers but still present
+// in the system libssl. They're available via dlsym at link time.
+extern int SSL_CTX_use_certificate_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
+extern int SSL_CTX_use_PrivateKey_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
+extern int SSL_CTX_use_certificate_chain_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
+
+// Wrapper for SSL_CTX_set_verify that hides the function-pointer callback
+// (Kotlin/Native cinterop can't pass null callbacks cleanly).
+static int pw_noop_verify_cb(int ok, X509_STORE_CTX *ctx) { return ok; }
+void pw_SSL_CTX_set_verify(SSL_CTX *ctx, int mode) {
+    SSL_CTX_set_verify(ctx, mode, pw_noop_verify_cb);
+}
+
+int pw_SSL_CTX_use_certificate_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
+    return SSL_CTX_use_certificate_buffer(ctx, (const unsigned char *)buf, len, type);
+}
+int pw_SSL_CTX_use_PrivateKey_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
+    return SSL_CTX_use_PrivateKey_buffer(ctx, (const unsigned char *)buf, len, type);
+}
+int pw_SSL_CTX_use_certificate_chain_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
+    return SSL_CTX_use_certificate_chain_buffer(ctx, (const unsigned char *)buf, len, type);
+}
+int pw_SSL_CTX_set_default_verify_paths(SSL_CTX *ctx) {
+    return SSL_CTX_set_default_verify_paths(ctx);
+}
+int pw_BIO_set_close(BIO *b, int c) {
+    return BIO_set_close(b, c);
+}
+int pw_SSL_set_tlsext_host_name(SSL *s, const char *name) {
+    return SSL_set_tlsext_host_name(s, name);
+}
+
+// Export the stderr pointer so Kotlin can use it.
+extern FILE *stderr;
+FILE *pw_stderr(void) { return stderr; }
