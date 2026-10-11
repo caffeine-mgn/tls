@@ -21,27 +21,33 @@ language = C
 #include <openssl/objects.h>
 #include <stdio.h>
 
-// Forward-declare functions removed in OpenSSL 3 headers but still present
-// in the system libssl. They're available via dlsym at link time.
-extern int SSL_CTX_use_certificate_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
-extern int SSL_CTX_use_PrivateKey_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
-extern int SSL_CTX_use_certificate_chain_buffer(SSL_CTX *ctx, const void *buf, long len, int type);
+// OpenSSL 3 removed the *_buffer helpers in favor of *_ASN1 (same signature
+// modulo the const cast). We use the _ASN1 variants directly. The Kotlin
+// cinterop maps C's `int` to Int and `unsigned char *` to UByte, so we
+// wrap each call site in a C function with the original signatures
+// (long len, unsigned char *d) so Kotlin can pass ByteArray pointers.
+int pw_SSL_CTX_use_certificate_ASN1_call(SSL_CTX *ctx, long len, const unsigned char *d) {
+    return SSL_CTX_use_certificate_ASN1(ctx, len, d);
+}
+EVP_PKEY *pw_d2i_PrivateKey_PKCS8(SSL_CTX *ctx, const unsigned char *d, long len) {
+    // Decode a PKCS#8 PrivateKeyInfo (which is what BouncyCastle's
+    // KeyPair.private.encoded produces) into an EVP_PKEY, then attach
+    // it to the SSL_CTX.
+    const unsigned char *p = d;
+    EVP_PKEY *pkey = d2i_PrivateKey(EVP_PKEY_NONE, NULL, &p, len);
+    if (pkey == NULL) return NULL;
+    if (SSL_CTX_use_PrivateKey(ctx, pkey) != 1) {
+        EVP_PKEY_free(pkey);
+        return NULL;
+    }
+    return pkey;
+}
 
 // Wrapper for SSL_CTX_set_verify that hides the function-pointer callback
 // (Kotlin/Native cinterop can't pass null callbacks cleanly).
 static int pw_noop_verify_cb(int ok, X509_STORE_CTX *ctx) { return ok; }
 void pw_SSL_CTX_set_verify(SSL_CTX *ctx, int mode) {
     SSL_CTX_set_verify(ctx, mode, pw_noop_verify_cb);
-}
-
-int pw_SSL_CTX_use_certificate_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
-    return SSL_CTX_use_certificate_buffer(ctx, (const unsigned char *)buf, len, type);
-}
-int pw_SSL_CTX_use_PrivateKey_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
-    return SSL_CTX_use_PrivateKey_buffer(ctx, (const unsigned char *)buf, len, type);
-}
-int pw_SSL_CTX_use_certificate_chain_buffer(SSL_CTX *ctx, const void *buf, long len, int type) {
-    return SSL_CTX_use_certificate_chain_buffer(ctx, (const unsigned char *)buf, len, type);
 }
 int pw_SSL_CTX_set_default_verify_paths(SSL_CTX *ctx) {
     return SSL_CTX_set_default_verify_paths(ctx);

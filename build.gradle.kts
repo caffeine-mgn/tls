@@ -45,15 +45,32 @@ kotlin {
 }
 
 kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+    val nativeTarget = this
+    val opensslLibSsl = "/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/linux_x64/build/libssl.a"
+    val opensslLibCrypto = "/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/linux_x64/build/libcrypto.a"
     compilations.getByName("main") {
         cinterops {
             val openssl by creating {
                 defFile(file("src/nativeInterop/cinterop/openssl.def"))
                 includeDirs("/usr/include")
                 compilerOpts("-I/usr/include")
-                linkerOpts("-L/usr/lib", "-lssl", "-lcrypto")
+                // The cinterop itself doesn't need to link — the cinterops
+                // pull in the pw_* shim definitions. We link the openssl
+                // binaries separately to avoid the GLIBC version-mismatch
+                // the system .so causes.
+                linkerOpts(opensslLibSsl, opensslLibCrypto)
             }
         }
+    }
+    // Link against the prebuilt libssl.a / libcrypto.a (sourced from the
+    // reference build) for both main and test. Static linking avoids the
+    // GLIBC version-mismatch that the system .so creates against the
+    // LLVM 21 toolchain.
+    nativeTarget.binaries.all {
+        linkerOpts(
+            opensslLibSsl, opensslLibCrypto,
+            "-lresolv", "-lm", "-lpthread", "-lutil", "-lcrypt", "-lrt", "-ldl",
+        )
     }
 }
 
