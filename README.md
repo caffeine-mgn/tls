@@ -3,9 +3,9 @@
 A minimal **Kotlin/Multiplatform TLS library** — only the session. No crypto, no
 PEM, no cert generation, no JCE wrapper. The public surface is the
 `SSLSession` state machine + a coroutine wrapper over kotlinx-io `Source` /
-`Sink`. Backed by JSSE on the JVM and OpenSSL 3 (via cinterop) on
-`linuxX64`. Build anything else you need on top of these primitives, or use
-[`dev.whyoleg.cryptography`](https://github.com/whyoleg/cryptography-kotlin)
+`Sink`. Backed by JSSE on the JVM and OpenSSL 3 (via cinterop) on every
+native target. Build anything else you need on top of these primitives, or
+use [`dev.whyoleg.cryptography`](https://github.com/whyoleg/cryptography-kotlin)
 for cert/keys.
 
 ## Design
@@ -68,15 +68,32 @@ transport, and tries again. The semantics intentionally mirror OpenSSL's
 
 ## Targets
 
-| Target     | TLS impl                | Crypto / cert / key loading           |
-|------------|-------------------------|----------------------------------------|
-| `jvm`      | `javax.net.ssl.SSLEngine` (JSSE) | JDK built-ins (`KeyFactory`, `CertificateFactory`) |
-| `linuxX64` | OpenSSL 3 (cinterop)    | OpenSSL 3 (`SSL_CTX_use_*_buffer`, `d2i_*`)         |
+| Target                 | TLS impl                | Link                          |
+|------------------------|-------------------------|-------------------------------|
+| `jvm`                  | `javax.net.ssl.SSLEngine` (JSSE) | JDK built-ins          |
+| `linuxX64`             | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `linuxArm64`           | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `androidNativeArm32`   | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `androidNativeArm64`   | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `androidNativeX64`     | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `androidNativeX86`     | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `mingwX64`             | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
+| `iosArm64`             | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
+| `iosX64`               | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
+| `iosSimulatorArm64`    | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
+| `macosArm64`           | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
 
-The native build links against the **prebuilt** libssl/libcrypto from the
-reference project (`/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/linux_x64/build`)
-to avoid the GLIBC versioned-symbol mismatch that the system `libssl.so.3`
-creates against the LLVM 21 toolchain. Headers come from `/usr/include`.
+Native targets link against the **prebuilt** static `libssl.a` / `libcrypto.a`
+from the reference project
+(`/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/<arch>/build`).
+This avoids the GLIBC versioned-symbol mismatch that the system
+`libssl.so.3` creates against the LLVM 21 toolchain. macOS and iOS fall
+back to the SDK's bundled OpenSSL via `-lssl -lcrypto`. The cinterop
+parses OpenSSL headers from
+`/home/subochev/projects/WORK/pw.binom.io/ssl/src/cinterop/include` (the
+reference project's complete 162-header set), scoped via
+`headerFilterOnly = openssl/**` so system headers (`<bits/floatn.h>` on
+aarch64, etc.) never enter the parse.
 
 > `dev.whyoleg.cryptography:cryptography-provider-openssl3-prebuilt` ships a
 > prebuilt `libcrypto.a` (12 MB) but **no `libssl.a`** — whyoleg is a
@@ -119,6 +136,7 @@ through the JVM via `SslContextConfigTest` + the full
 ```bash
 ./gradlew jvmTest          # JVM build + tests
 ./gradlew linuxX64Test     # Native build + tests
+./gradlew allTests         # every target's tests (jvm + 11 native)
 ./gradlew build            # everything
 ```
 

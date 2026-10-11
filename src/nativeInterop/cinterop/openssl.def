@@ -2,34 +2,27 @@ package = openssl3
 language = C
 
 // OpenSSL 3.x core + libssl declarations for the TLS state machine.
-// The linker picks up libssl/libcrypto from the system (or, optionally,
-// from the prebuilt .a in cryptography-provider-openssl3-prebuilt).
-// Headers come from the system include path.
+// We list headers explicitly rather than #include'ing them — that
+// way the cinterop only pulls in the headers we name (no recursive
+// <bits/floatn.h> on aarch64 / <bits/sys_err.h> on glibc 2.34+).
+// Combined with headerFilter = openssl/**, only the openssl/ subtree
+// is parsed.
+
+headers = openssl/ssl.h openssl/err.h openssl/bio.h openssl/buffer.h \
+          openssl/x509.h openssl/evp.h openssl/pem.h openssl/rsa.h \
+          openssl/ec.h openssl/bn.h openssl/objects.h
+headerFilter = openssl/**
 
 ---
 
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/bio.h>
-#include <openssl/buffer.h>
-#include <openssl/x509.h>
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rsa.h>
-#include <openssl/ec.h>
-#include <openssl/bn.h>
-#include <openssl/objects.h>
-#include <stdio.h>
-
-// OpenSSL 3 removed the *_buffer helpers in favor of *_ASN1 (same signature
-// modulo the const cast). We use the _ASN1 variants directly. The Kotlin
-// cinterop maps C's `int` to Int and `unsigned char *` to UByte, so we
-// wrap each call site in a C function with the original signatures
-// (long len, unsigned char *d) so Kotlin can pass ByteArray pointers.
-int pw_SSL_CTX_use_certificate_ASN1_call(SSL_CTX *ctx, long len, const unsigned char *d) {
+// OpenSSL 3 dropped the *_buffer helpers. The cinterop maps C's
+// `int` to Int and `unsigned char *` to UByte, so we wrap each call
+// site in a C function with the original signatures (long long len,
+// unsigned char *d) so Kotlin can pass ByteArray pointers.
+int pw_SSL_CTX_use_certificate_ASN1_call(SSL_CTX *ctx, long long len, const unsigned char *d) {
     return SSL_CTX_use_certificate_ASN1(ctx, len, d);
 }
-EVP_PKEY *pw_d2i_PrivateKey_PKCS8(SSL_CTX *ctx, const unsigned char *d, long len) {
+EVP_PKEY *pw_d2i_PrivateKey_PKCS8(SSL_CTX *ctx, const unsigned char *d, long long len) {
     // Decode a PKCS#8 PrivateKeyInfo (which is what BouncyCastle's
     // KeyPair.private.encoded produces) into an EVP_PKEY, then attach
     // it to the SSL_CTX.
@@ -60,5 +53,7 @@ int pw_SSL_set_tlsext_host_name(SSL *s, const char *name) {
 }
 
 // Export the stderr pointer so Kotlin can use it.
-extern FILE *stderr;
-FILE *pw_stderr(void) { return stderr; }
+// (Removed: the FILE* type pulls in <stdio.h> on every target, and
+// the cross-platform stdio.h definitions break cinterop parsing
+// on mingw + android ndk. We don't actually need the pointer —
+// any code that needs to log to stderr can do so through Kotlin.)

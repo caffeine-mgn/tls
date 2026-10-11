@@ -6,7 +6,6 @@ import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
-import openssl3.ERR_print_errors_fp
 import openssl3.OPENSSL_init_ssl
 import openssl3.SSL
 import openssl3.SSL_CTX
@@ -23,7 +22,6 @@ import openssl3.pw_SSL_CTX_set_verify
 import openssl3.pw_SSL_CTX_use_certificate_ASN1_call
 import openssl3.pw_SSL_set_tlsext_host_name
 import openssl3.pw_d2i_PrivateKey_PKCS8
-import openssl3.pw_stderr
 
 actual class SSLContext internal constructor(
     private val ctx: CPointer<SSL_CTX>,
@@ -67,7 +65,6 @@ actual class SSLContext internal constructor(
             val first = certChainDer.first()
             first.usePinned { pinned ->
                 if (pw_SSL_CTX_use_certificate_ASN1_call(ctx, first.size.toLong(), pinned.addressOf(0).reinterpret()) != 1) {
-                    ERR_print_errors_fp(pw_stderr())
                     SSL_CTX_free(ctx)
                     error("SSL_CTX_use_certificate_ASN1 failed")
                 }
@@ -83,7 +80,6 @@ actual class SSLContext internal constructor(
             }
             privateKeyDer.usePinned { pinned ->
                 if (pw_d2i_PrivateKey_PKCS8(ctx, pinned.addressOf(0).reinterpret(), privateKeyDer.size.toLong()) == null) {
-                    ERR_print_errors_fp(pw_stderr())
                     SSL_CTX_free(ctx)
                     error("SSL_CTX_use_PrivateKey (PKCS#8) failed")
                 }
