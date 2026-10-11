@@ -7,10 +7,28 @@ plugins {
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.detekt)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.android.library)
 }
 
 group = "pw.binom"
 version = "0.1.0-SNAPSHOT"
+
+android {
+    namespace = "pw.binom.tls"
+    compileSdk = 34
+    defaultConfig {
+        minSdk = 24
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
 
 // Prebuilt OpenSSL static libs from the reference project. Each native
 // target picks the matching arch. Targets not listed (macos, ios) fall
@@ -31,6 +49,7 @@ val mingwX64Libs = opensslLibs("mingw_x64")
 kotlin {
     jvm()
     @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+    androidTarget()
     applyDefaultHierarchyTemplate()
 
     linuxX64()
@@ -62,7 +81,14 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.bouncycastle.bcprov)
         }
+        androidMain.dependencies {
+            implementation(libs.bouncycastle.bcprov)
+        }
         jvmTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.bouncycastle.bcpkix)
+        }
+        androidUnitTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.bouncycastle.bcpkix)
         }

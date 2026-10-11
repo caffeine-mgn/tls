@@ -71,6 +71,7 @@ transport, and tries again. The semantics intentionally mirror OpenSSL's
 | Target                 | TLS impl                | Link                          |
 |------------------------|-------------------------|-------------------------------|
 | `jvm`                  | `javax.net.ssl.SSLEngine` (JSSE) | JDK built-ins          |
+| `android` (JVM)        | `javax.net.ssl.SSLEngine` (JSSE) | Android SDK (minSdk 24) |
 | `linuxX64`             | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
 | `linuxArm64`           | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
 | `androidNativeArm32`   | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
@@ -82,6 +83,11 @@ transport, and tries again. The semantics intentionally mirror OpenSSL's
 | `iosX64`               | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
 | `iosSimulatorArm64`    | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
 | `macosArm64`           | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
+
+`android` (JVM) is a sibling target to `jvm` — both use JSSE's
+`SSLEngine`, so the actuals are identical and live in `src/jvmMain/` and
+`src/androidMain/` respectively. `androidNative*` (Kotlin/Native → NDK)
+are the *separate* targets that link the prebuilt OpenSSL `.a` files.
 
 Native targets link against the **prebuilt** static `libssl.a` / `libcrypto.a`
 from the reference project
@@ -101,15 +107,15 @@ aarch64, etc.) never enter the parse.
 > primitives only. Switching to it for this library would require
 > additional plumbing (extract the `.a`, link it next to a libssl that
 > matches the same GLIBC). Documented as a follow-up, not required for
-> the current 4 jvmTest + 3 linuxX64Test green-build state.
+> the current 4 jvmTest + 4 androidUnitTest + 3 linuxX64Test green-build state.
 
 ## Tests
 
-| Test                              | commonTest | jvmTest | linuxX64Test |
-|-----------------------------------|------------|---------|---------------|
-| `TlsConnectionKotlinxIoTest`      | ✅          | ✅       | ✅             |
-| `SslContextConfigTest`            | -          | ✅       | -             |
-| `NativeSslContextSmokeTest`       | -          | -       | ✅             |
+| Test                              | commonTest | jvmTest | androidUnitTest | linuxX64Test |
+|-----------------------------------|------------|---------|-----------------|---------------|
+| `TlsConnectionKotlinxIoTest`      | ✅          | ✅       | ✅              | ✅             |
+| `SslContextConfigTest`            | -          | ✅       | ✅              | -             |
+| `NativeSslContextSmokeTest`       | -          | -       | -              | ✅             |
 
 The `NativeSslContextSmokeTest` verifies the native cinterop layer
 links, the `openssl3.*` package is reachable, and OpenSSL can be
@@ -134,10 +140,11 @@ through the JVM via `SslContextConfigTest` + the full
 ## Build
 
 ```bash
-./gradlew jvmTest          # JVM build + tests
-./gradlew linuxX64Test     # Native build + tests
-./gradlew allTests         # every target's tests (jvm + 11 native)
-./gradlew build            # everything
+./gradlew jvmTest           # JVM build + tests
+./gradlew testDebugUnitTest # Android (JVM) unit tests
+./gradlew linuxX64Test      # Native build + tests
+./gradlew allTests          # every target's tests (jvm + 11 native)
+./gradlew build             # everything
 ```
 
 ## License
