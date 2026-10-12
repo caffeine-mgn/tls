@@ -1,5 +1,5 @@
 import org.gradle.api.tasks.testing.Test
-import pw.binom.tls.build.OpenSSLBuildTask
+import pw.binom.tls.gradle.OpenSSLBuildTask
 import java.io.File
 import java.net.URI
 
