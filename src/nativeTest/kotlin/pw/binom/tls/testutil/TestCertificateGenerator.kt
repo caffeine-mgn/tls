@@ -22,7 +22,8 @@ actual object TestCertificateGenerator {
         )
     }
 
-    private val CERT_B64 = """
+    private val CERT_B64 =
+        """
         MIICuzCCAaOgAwIBAgIBATANBgkqhkiG9w0BAQsFADAPMQ0wCwYDVQQDDAR0ZXN0
         MCAXDTcwMDEwMTAwMDAwMFoYDzIxMjYwOTE4MDQxNjExWjAPMQ0wCwYDVQQDDAR0
         ZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArJAV2IKJxJIh4ekb
@@ -38,9 +39,10 @@ actual object TestCertificateGenerator {
         /i89y/XkI8KXHDXIzUXCIcvhPDYjQPmEpF8qZjDhJWzH2BOb42b1cq7sNR3paf9v
         QoffC7Qcy+MZt8PzZoLn2BBSI/ceqYBQ4vqi7/sycKQhBOAvJwJh8zaYLOa8V1h6
         RKXyyPWS7GuebAvi35qnBKSZipWfGkrj6fwS9bWbDw==
-    """.trimIndent().replace(Regex("\\s+"), "")
+        """.trimIndent().replace(Regex("\\s+"), "")
 
-    private val KEY_B64 = """
+    private val KEY_B64 =
+        """
         MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCskBXYgonEkiHh
         6RvB5rQOhj2yl66eDHmvXMt0jQ/Eu5R/rqAMJCgnsr+ByaOXX5hRV9FqgcxDHGwD
         F/aR74nmHzHvqo1YMwUi/vax+9i9DngMaa1ay0j9yAzovmcSLWkNX/tNteT2RZk3
@@ -67,6 +69,5 @@ actual object TestCertificateGenerator {
         AzsLvdj261yViuc6NuubNPkhAzLuKDmFCI75rUMFdpS+v0ZuT/bHVaYnhYBprMLV
         j7Xvmnk6HvFg+z8wDG0TyWKylBTORRb94IT5w36tU4/VvS5IH6+T9UyHtalAcdJe
         Rpg9lKDxCfQWYX0ZCzo+8zGU
-    """.trimIndent().replace(Regex("\\s+"), "")
+        """.trimIndent().replace(Regex("\\s+"), "")
 }
-

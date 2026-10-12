@@ -94,7 +94,8 @@ actual class SSLSession internal constructor(
     actual fun shutdown() {
         engine.closeOutbound()
         try {
-            appOut.compact(); appOut.limit(appOut.capacity())
+            appOut.compact()
+            appOut.limit(appOut.capacity())
             engine.wrap(appOut, netOut)
             appOut.flip()
         } catch (_: Throwable) {
@@ -102,12 +103,16 @@ actual class SSLSession internal constructor(
     }
 
     actual override fun close() {
-        try { engine.closeOutbound() } catch (_: Throwable) {}
+        try {
+            engine.closeOutbound()
+        } catch (_: Throwable) {
+        }
     }
 
     private fun drainNetOut() {
         if (engine.handshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
-            appOut.compact(); appOut.limit(appOut.capacity())
+            appOut.compact()
+            appOut.limit(appOut.capacity())
             val r = engine.wrap(appOut, netOut)
             appOut.flip()
         }
@@ -121,12 +126,15 @@ actual class SSLSession internal constructor(
             netIn.hasRemaining()
         ) {
             while (netIn.hasRemaining()) {
-                appIn.compact(); appIn.limit(appIn.capacity())
+                appIn.compact()
+                appIn.limit(appIn.capacity())
                 val r = engine.unwrap(netIn, appIn)
                 appIn.flip()
                 runDelegatedTasks()
                 if (r.status == SSLEngineResult.Status.BUFFER_UNDERFLOW ||
-                    r.status == SSLEngineResult.Status.CLOSED) break
+                    r.status == SSLEngineResult.Status.CLOSED) {
+                    break
+                }
                 if (r.bytesProduced() == 0 && r.bytesConsumed() == 0) break
             }
         }
@@ -144,7 +152,7 @@ actual class SSLSession internal constructor(
         SSLEngineResult.Status.OK -> when (r.handshakeStatus) {
             SSLEngineResult.HandshakeStatus.NEED_WRAP -> State.WANT_WRITE
             SSLEngineResult.HandshakeStatus.NEED_UNWRAP -> State.WANT_READ
-            SSLEngineResult.HandshakeStatus.NEED_TASK -> State.WANT_READ  // re-probe after runDelegatedTasks
+            SSLEngineResult.HandshakeStatus.NEED_TASK -> State.WANT_READ // re-probe after runDelegatedTasks
             SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING,
             SSLEngineResult.HandshakeStatus.FINISHED,
             -> State.OK

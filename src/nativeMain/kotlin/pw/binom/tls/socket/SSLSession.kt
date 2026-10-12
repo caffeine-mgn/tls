@@ -18,7 +18,6 @@ import openssl3.SSL_set_bio
 import openssl3.SSL_shutdown
 import openssl3.SSL_write
 import openssl3.pw_BIO_set_close
-import openssl3.pw_SSL_set_tlsext_host_name
 
 /**
  * Lowest-level SSLSession backed by OpenSSL 3 via the cinterop bindings in
@@ -66,7 +65,10 @@ actual class SSLSession internal constructor(
     }
 
     actual override fun close() {
-        try { SSL_shutdown(ssl) } catch (_: Throwable) {}
+        try {
+            SSL_shutdown(ssl)
+        } catch (_: Throwable) {
+        }
         SSL_free(ssl)
         BIO_free(readBio)
         BIO_free(writeBio)

@@ -46,7 +46,9 @@ class LoopbackSocket internal constructor(
 ) : AutoCloseable {
     fun source(): Source = socket.openReadChannel().asSource().buffered()
     fun sink(): Sink = socket.openWriteChannel(autoFlush = true).asSink().buffered()
-    override fun close() { socket.close() }
+    override fun close() {
+        socket.close()
+    }
 }
 
 suspend fun loopbackConnect(host: String = "127.0.0.1", port: Int): LoopbackSocket {

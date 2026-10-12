@@ -8,5 +8,7 @@ style:
     active: false
   MaxLineLength:
     active: false
-  UnusedPrivateMember:
+  UnusedPrivateFunction:
+    active: false
+  UnusedPrivateProperty:
     active: false

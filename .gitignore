@@ -6,6 +6,8 @@ build/
 .idea/
 *.iml
 .kotlin/
+.cortexkit/
+.DS_Store
 
 # Local config
 local.properties

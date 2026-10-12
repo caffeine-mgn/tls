@@ -4,11 +4,11 @@ import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate as JdkCert
 import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.X509TrustManager
+import java.security.cert.X509Certificate as JdkCert
 import javax.net.ssl.SSLContext as JdkSSLContext
 import javax.net.ssl.TrustManager as JdkTrustManager
-import javax.net.ssl.X509TrustManager
 
 actual class SSLContext internal constructor(
     private val jvmContext: JdkSSLContext,

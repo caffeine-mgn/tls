@@ -7,12 +7,10 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import openssl3.OPENSSL_init_ssl
-import openssl3.SSL
 import openssl3.SSL_CTX
 import openssl3.SSL_CTX_free
 import openssl3.SSL_CTX_new
 import openssl3.SSL_new
-import openssl3.SSL_FILETYPE_ASN1
 import openssl3.SSL_set_accept_state
 import openssl3.SSL_set_connect_state
 import openssl3.TLS_client_method
@@ -64,7 +62,12 @@ actual class SSLContext internal constructor(
 
             val first = certChainDer.first()
             first.usePinned { pinned ->
-                if (pw_SSL_CTX_use_certificate_ASN1_call(ctx, first.size.toLong(), pinned.addressOf(0).reinterpret()) != 1) {
+                val n = pw_SSL_CTX_use_certificate_ASN1_call(
+                    ctx,
+                    first.size.toLong(),
+                    pinned.addressOf(0).reinterpret(),
+                )
+                if (n != 1) {
                     SSL_CTX_free(ctx)
                     error("SSL_CTX_use_certificate_ASN1 failed")
                 }
@@ -72,14 +75,24 @@ actual class SSLContext internal constructor(
             if (certChainDer.size > 1) {
                 val chain = certChainDer.fold(ByteArray(0)) { acc, b -> acc + b }
                 chain.usePinned { pinned ->
-                    if (pw_SSL_CTX_use_certificate_ASN1_call(ctx, chain.size.toLong(), pinned.addressOf(0).reinterpret()) != 1) {
+                    val n = pw_SSL_CTX_use_certificate_ASN1_call(
+                        ctx,
+                        chain.size.toLong(),
+                        pinned.addressOf(0).reinterpret(),
+                    )
+                    if (n != 1) {
                         SSL_CTX_free(ctx)
                         error("SSL_CTX_use_certificate_chain failed")
                     }
                 }
             }
             privateKeyDer.usePinned { pinned ->
-                if (pw_d2i_PrivateKey_PKCS8(ctx, pinned.addressOf(0).reinterpret(), privateKeyDer.size.toLong()) == null) {
+                val key = pw_d2i_PrivateKey_PKCS8(
+                    ctx,
+                    pinned.addressOf(0).reinterpret(),
+                    privateKeyDer.size.toLong(),
+                )
+                if (key == null) {
                     SSL_CTX_free(ctx)
                     error("SSL_CTX_use_PrivateKey (PKCS#8) failed")
                 }

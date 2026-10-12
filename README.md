@@ -1,12 +1,22 @@
+> **Language**: English | [Русский](./README.ru.md)
+
 # pw.binom.tls
 
 A minimal **Kotlin/Multiplatform TLS library** — only the session. No crypto, no
 PEM, no cert generation, no JCE wrapper. The public surface is the
-`SSLSession` state machine + a coroutine wrapper over kotlinx-io `Source` /
+`SSLSession` state machine + a kotlinx-io wrapper around `Source` /
 `Sink`. Backed by JSSE on the JVM and OpenSSL 3 (via cinterop) on every
 native target. Build anything else you need on top of these primitives, or
 use [`dev.whyoleg.cryptography`](https://github.com/whyoleg/cryptography-kotlin)
 for cert/keys.
+
+## Status
+
+**alpha.** JVM and `linuxX64` builds are green; the rest of the
+native matrix is wired but the prebuilt `libssl.a` / `libcrypto.a`
+from the reference project was compiled against an older GLIBC and
+segfaults at runtime in this environment. See [Tests](#tests) for
+which targets run which tests.
 
 ## Design
 
@@ -349,6 +359,26 @@ through the JVM via `SslContextConfigTest` + the full
 ./gradlew build             # everything
 ```
 
+### Verification gate (pre-commit)
+
+```bash
+./gradlew ktlintFormat
+./gradlew :ktlintCheck \
+         :detektCommonMainSourceSet \
+         :detektCommonTestSourceSet \
+         jvmTest linuxX64Test
+```
+
+All five must be green before commit. `ktlintFormat` rewrites
+trailing-comma / line-wrap style; the rest must finish without
+errors. If `ktlintFormat` produced no diff on the second run, the
+codebase is style-clean.
+
+## Issues
+
+Bug reports, feature requests, PRs:
+[github.com/caffeine-mgn/tls/issues](https://github.com/caffeine-mgn/tls/issues)
+
 ## License
 
-Apache 2.0.
+[Apache 2.0](./LICENSE).
