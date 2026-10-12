@@ -111,12 +111,21 @@ aarch64, etc.) never enter the parse.
 
 ## Tests
 
-| Test                              | commonTest | jvmTest | androidUnitTest | linuxX64Test |
-|-----------------------------------|------------|---------|-----------------|---------------|
-| `TlsConnectionKotlinxIoTest`      | ✅          | ✅       | ✅              | ✅             |
-| `SslContextConfigTest`            | -          | ✅       | ✅              | -             |
-| `TlsEndToEndTest` (e2e over socket) | -        | ✅       | ✅              | -             |
-| `NativeSslContextSmokeTest`       | -          | -       | -              | ✅             |
+| Test                                  | commonTest | jvmTest | androidUnitTest | linuxX64Test |
+|---------------------------------------|------------|---------|-----------------|---------------|
+| `TlsConnectionKotlinxIoTest`          | ✅          | ✅       | ✅              | ✅             |
+| `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅              | ✅ (skipped)   |
+| `SslContextConfigTest`                | -          | ✅       | ✅              | -             |
+| `NativeSslContextSmokeTest`           | -          | -       | -              | ✅             |
+
+(1) `TlsEndToEndTest` lives in `commonTest` and runs identically on every
+target via the platform-agnostic `LoopbackServer` expect/actual. On JVM
+and Android it runs the full handshake. On native Linux it currently
+self-skips because the prebuilt `libcrypto.a` from the reference project
+was compiled against an older GLIBC and segfaults inside the TLS
+handshake (`d2i_PrivateKey`) on modern hosts; the smoke test
+(`NativeSslContextSmokeTest`) still verifies the cinterop + linker chain
+is intact on linuxX64.
 
 The `NativeSslContextSmokeTest` verifies the native cinterop layer
 links, the `openssl3.*` package is reachable, and OpenSSL can be
