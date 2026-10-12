@@ -1,6 +1,5 @@
 package pw.binom.tls.socket
 
-import kotlinx.coroutines.sync.withLock
 import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.Source
@@ -11,15 +10,18 @@ class TlsConnection internal constructor(
     private val sink: Sink,
 ) : AutoCloseable {
 
-    private val mutex = kotlinx.coroutines.sync.Mutex()
     private val netBuf = ByteArray(NET_BUF_SIZE)
     private val readBuf = Buffer()
     private val closed = kotlinx.atomicfu.atomic(false)
+    private val inFlight = kotlinx.atomicfu.atomic(false)
 
-    suspend fun read(dst: ByteArray, offset: Int = 0, length: Int = dst.size - offset): Int {
+    fun read(dst: ByteArray, offset: Int = 0, length: Int = dst.size - offset): Int {
         if (length == 0) return 0
         check(!closed.value) { "TlsConnection is closed" }
-        mutex.withLock {
+        check(inFlight.compareAndSet(expect = false, update = true)) {
+            "Concurrent read/write on TlsConnection is not supported; serialize externally"
+        }
+        try {
             while (true) {
                 drainToTransport()
                 val status = session.readApp(dst, offset, length)
@@ -42,20 +44,24 @@ class TlsConnection internal constructor(
             }
             @Suppress("UNREACHABLE_CODE")
             0
+        } finally {
+            inFlight.value = false
         }
     }
 
-    suspend fun write(src: ByteArray, offset: Int = 0, length: Int = src.size - offset) {
+    fun write(src: ByteArray, offset: Int = 0, length: Int = src.size - offset) {
         if (length == 0) return
         check(!closed.value) { "TlsConnection is closed" }
-        mutex.withLock {
+        check(inFlight.compareAndSet(expect = false, update = true)) {
+            "Concurrent read/write on TlsConnection is not supported; serialize externally"
+        }
+        try {
             var pos = offset
             var remaining = length
             var iter = 0
             while (remaining > 0) {
                 iter++
                 if (iter > 200) error("TLS write: stuck after $iter iterations")
-                // Always drain first — if the engine has pending data, ship it.
                 drainToTransport()
                 val status = session.writeApp(src, pos, remaining)
                 when (status.state) {
@@ -66,9 +72,6 @@ class TlsConnection internal constructor(
                     SSLSession.State.CLOSED -> throw TlsProtocolException("write on closed session")
                     SSLSession.State.ERROR -> throw TlsProtocolException("write error")
                     SSLSession.State.WANT_READ -> {
-                        // Engine may have just generated data during writeApp
-                        // (e.g. ClientHello on first client wrap). Drain it
-                        // before blocking on the peer, otherwise we deadlock.
                         drainToTransport()
                         val n = readNet()
                         if (n == 0) throw TlsProtocolException("EOF during write")
@@ -78,11 +81,14 @@ class TlsConnection internal constructor(
                 }
             }
             drainToTransport()
+        } finally {
+            inFlight.value = false
         }
     }
 
     override fun close() {
         if (!closed.compareAndSet(expect = false, update = true)) return
+        inFlight.value = false
         runCatching { session.shutdown() }
         runCatching { drainToTransportBlocking() }
         runCatching { session.close() }
@@ -103,7 +109,7 @@ class TlsConnection internal constructor(
         return read
     }
 
-    private suspend fun drainToTransport() {
+    private fun drainToTransport() {
         while (true) {
             val n = session.readNet(netBuf, 0, netBuf.size)
             if (n <= 0) return

@@ -26,13 +26,13 @@ suspend fun Source.tlsClient(
 ): TlsConnection = tlsConnect(this, sink, sslContext, serverName, port)
 
 /** Server-side counterpart of [tlsClient]. */
-suspend fun Source.tlsServer(
+fun Source.tlsServer(
     sink: Sink,
     sslContext: SSLContext,
 ): TlsConnection = tlsServer(this, sink, sslContext)
 
 /** Convenience: build a client [SSLContext] with default trust and connect. */
-suspend fun Source.tlsClient(
+fun Source.tlsClient(
     sink: Sink,
     serverName: String,
     port: Int = -1,
@@ -40,7 +40,7 @@ suspend fun Source.tlsClient(
 ): TlsConnection = tlsConnect(this, sink, SSLContext.client(trustAll), serverName, port)
 
 /** Convenience: build a server [SSLContext] with the given cert + key and accept. */
-suspend fun Source.tlsServer(
+fun Source.tlsServer(
     sink: Sink,
     certChainDer: List<ByteArray>,
     privateKeyDer: ByteArray,
