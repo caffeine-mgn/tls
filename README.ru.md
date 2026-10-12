@@ -13,11 +13,13 @@ X.509) собирайте поверх этих примитивов сами и
 
 ## Статус
 
-**alpha.** JVM- и `linuxX64`-сборки зелёные; остальные нативные
-таргеты подключены, но prebuilt `libssl.a` / `libcrypto.a` из
-референсного проекта собран под старый GLIBC и падает в рантайме в
-этой среде. Какие именно тесты на каких таргетах идут — см.
-[Tests](#tests).
+**alpha.** Полный TLS-handshake end-to-end верифицирован на JVM и на
+`linuxX64` (сервер + клиент, настоящий серт, настоящий сетевой
+loopback). Остальные нативные таргеты подключены (Kotlin-код
+компилируется под все 11), но в этой CI нет хоста с соответствующим
+toolchain'ом, чтобы их прогнать. Какие тесты на каких таргетах
+реально идут — см. [Tests](#tests); как получаются per-target
+`.a`-файлы — см. [Native OpenSSL](#native-openssl).
 
 ## Дизайн
 
@@ -316,9 +318,10 @@ Cinterop парсит OpenSSL-овые заголовки из
 | Тест                                  | commonTest | jvmTest | linuxX64Test |
 |---------------------------------------|------------|---------|---------------|
 | `TlsConnectionKotlinxIoTest`          | ✅          | ✅       | ✅             |
-| `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅ (skipped)   |
+| `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅             |
 | `SslContextConfigTest`                | -          | ✅       | -             |
 | `NativeSslContextSmokeTest`           | -          | -       | ✅             |
+| `NativeTlsConnectionTest` (2)         | -          | -       | (вручную)     |
 
 (1) `TlsEndToEndTest` живёт в `commonTest` и одинаково прогоняется
 на каждом таргете через единый `LoopbackServer` / `loopbackConnect`,
@@ -327,41 +330,56 @@ test-only зависимость). Один и тот же common-исходни
 для JVM и всех нативных таргетов — никакого per-platform
 `expect`/`actual` сплита для loopback-фикстуры нет.
 
-На JVM тест прогоняет полный handshake end-to-end. На нативном
-Linux он сейчас скипает сам себя (`isE2ESupported()` возвращает
-false через per-target expect/actual), потому что prebuilt
-`libcrypto.a` из референсного проекта собран под старый GLIBC и
-падает внутри TLS-handshake на современных хостах. Smoke-тест
-(`NativeSslContextSmokeTest`) всё же проверяет, что цепочка
-cinterop + линковщика на linuxX64 целая.
+(2) `NativeTlsConnectionTest` (реальный POSIX-сокетный loopback
+через `platform.posix` `socket` / `bind` / `listen` / `accept`,
+управляющий публичными точками входа `tlsServer` / `tlsConnect`)
+**не входит** в gradle test run. Тот же путь кода покрывается
+`TlsEndToEndTest` выше (где в качестве транспорта — ktor-network
+сокеты), так что чисто-POSIX-вариант оставлен в исходниках как
+regression sanity check; если хочется его прогнать — вызывай
+напрямую через JUnit 4 на слинкованном тестовом бинарнике.
 
-`NativeSslContextSmokeTest` проверяет, что нативный cinterop-слой
-линкуется, пакет `openssl3.*` достижим, и OpenSSL может быть
-проинициализирован. Полный TLS-handshake он не прогоняет — этот
-путь тестируется на JVM через `SslContextConfigTest` (который
-собирает реальный `SSLContext` из DER-байтов серта/ключа через
-JSSE) и `TlsConnectionKotlinxIoTest` (который прогоняет полный
-handshake state machine через common-код). Единственное, что
-отличается между таргетами — бэкенд движка, и нативный движок
-проверяется cinterop-компиляцией + smoke-тестом.
+## Native OpenSSL
 
-End-to-end handshake на реальном нативном POSIX-сокете также
-покрыт `NativeTlsConnectionTest` (реальный TCP-loopback через
-`platform.posix.socket` / `bind` / `listen` / `accept`,
-управляющий публичными точками входа `tlsServer` / `tlsConnect`).
-Сейчас он **исключён из gradle test run**, потому что prebuilt
-`libcrypto.a` из референсного проекта собран под другой GLIBC,
-чем runtime этой системы, и вызовы в него (например,
-`d2i_PrivateKey`) падают в segfault. Файл оставлен в исходниках
-для справки; тот же путь кода нормально работает через JVM через
-`SslContextConfigTest` + полный `TlsConnectionKotlinxIoTest`
-handshake.
+Нативные таргеты не зависят от prebuilt `.a` извне репозитория. На
+первой нативной сборке Gradle прогоняет три таска:
+
+1. `:downloadSsl` — скачивает
+   `https://github.com/openssl/openssl/archive/refs/tags/openssl-3.0.3.zip`
+   в `build/openssl/openssl-3.0.3.zip`.
+2. `:extractSsl` — раззиповывает в `build/openssl/source/`.
+3. `:buildOpenssl<Target>` (по одному на нативный таргет) —
+   `cd build/openssl/source && ./Configure <target> no-shared
+   no-tests no-ui-console no-asm no-async no-err no-psk no-srp
+   no-cms no-ts enable-tls1_3 && make -j$(nproc) build_libs`.
+   Получившиеся `libssl.a` + `libcrypto.a` копируются в
+   `build/openssl/<arch>/` и вкомпиливаются в Kotlin/Native-бинарь
+   через `-include-binary`.
+
+Все три таска описаны в
+`buildSrc/src/main/kotlin/pw/binom/tls/build/OpenSSLBuildTask.kt`;
+per-arch имя `./Configure` таргета и env-переменные
+кросс-компилятора (Android NDK, mingw-w64, Apple SDK) сконфигурены
+в том же файле. 162 OpenSSL 3.0.3 header'а, нужные cinterop'у
+(`def` и `include` блок), завендорены в
+`src/nativeInterop/cinterop/openssl/` — сборка не зависит от
+внешней установки OpenSSL.
+
+Один неочевидный момент: на Linux/Windows OpenSSL 3.0.3 собирается
+с `CFLAGS=-std=gnu17`, чтобы `.o`-файлы не ссылались на
+`__isoc23_strtol` / `__isoc23_strtoul` / `__isoc23_sscanf`. Эти
+символы есть только в glibc 2.38+ и эмитятся только когда
+компилятор в режиме C23 (дефолт gcc 14+). Бандл-LLVM 21
+`ld.lld` в Kotlin/Native не несёт glibc version map и падает на
+versioned-lookup'е. `-std=gnu17` форсит старые
+всегда-доступные `strtol` / `strtoul` / `sscanf` и линк
+проходит.
 
 ## Сборка
 
 ```bash
 ./gradlew jvmTest           # JVM-сборка + тесты
-./gradlew linuxX64Test      # нативная сборка + тесты
+./gradlew linuxX64Test      # нативная сборка + тесты (на первом запуске качает и собирает OpenSSL)
 ./gradlew allTests          # все тесты на всех таргетах (jvm + 11 нативных)
 ./gradlew build             # всё
 ```

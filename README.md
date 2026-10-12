@@ -12,11 +12,13 @@ for cert/keys.
 
 ## Status
 
-**alpha.** JVM and `linuxX64` builds are green; the rest of the
-native matrix is wired but the prebuilt `libssl.a` / `libcrypto.a`
-from the reference project was compiled against an older GLIBC and
-segfaults at runtime in this environment. See [Tests](#tests) for
-which targets run which tests.
+**alpha.** Full TLS handshake verified end-to-end on JVM and on
+`linuxX64` (server + client, real cert, real network loopback). Other
+native targets are wired (the Kotlin code compiles for all 11 of them)
+but only exercised when a host with the right toolchain runs the test
+— this CI has none. See [Tests](#tests) for the per-target matrix and
+[Native OpenSSL](#native-openssl) for how the per-target .a files are
+produced.
 
 ## Design
 
@@ -312,49 +314,64 @@ aarch64, etc.) never enter the parse.
 | Test                                  | commonTest | jvmTest | linuxX64Test |
 |---------------------------------------|------------|---------|---------------|
 | `TlsConnectionKotlinxIoTest`          | ✅          | ✅       | ✅             |
-| `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅ (skipped)   |
+| `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅             |
 | `SslContextConfigTest`                | -          | ✅       | -             |
 | `NativeSslContextSmokeTest`           | -          | -       | ✅             |
+| `NativeTlsConnectionTest` (2)         | -          | -       | (manual)      |
 
-(1) `TlsEndToEndTest` lives in `commonTest` and runs identically on every
-target via a single `LoopbackServer` / `loopbackConnect` built on
-**ktor-network** (`io.ktor:ktor-network:3.6.0`, test-only dep). The same
-common source compiles for JVM and all native targets — there is no
-per-platform `expect`/`actual` split for the loopback fixture.
+(1) `TlsEndToEndTest` lives in `commonTest` and runs identically on
+every target via a single `LoopbackServer` / `loopbackConnect` built on
+**ktor-network** (`io.ktor:ktor-network:3.6.0`, test-only dep). The
+same common source compiles for JVM and all native targets — there is
+no per-platform `expect`/`actual` split for the loopback fixture.
 
-On JVM the test runs the full handshake end-to-end. On
-native Linux it currently self-skips (`isE2ESupported()` returns false
-via the per-target expect/actual) because the prebuilt `libcrypto.a`
-from the reference project was compiled against an older GLIBC and
-segfaults inside the TLS handshake on modern hosts. The smoke test
-(`NativeSslContextSmokeTest`) still verifies the cinterop + linker
-chain is intact on linuxX64.
+(2) `NativeTlsConnectionTest` (real POSIX socket loopback driving
+`platform.posix` `socket` / `bind` / `listen` / `accept` through the
+public `tlsServer` / `tlsConnect` entry points) is **not** part of the
+gradle test run. The same code path is covered by `TlsEndToEndTest`
+above (which uses ktor-network sockets as the transport), so the
+loopback-pure-POSIX variant is kept in source as a regression
+sanity check; if you want to run it, invoke it directly via JUnit 4
+on the linked test binary.
 
-The `NativeSslContextSmokeTest` verifies the native cinterop layer
-links, the `openssl3.*` package is reachable, and OpenSSL can be
-initialized. It does not run a full TLS handshake — that path is
-exercised on the JVM by `SslContextConfigTest` (which constructs a real
-`SSLContext` from DER cert/key bytes via JSSE) and `TlsConnectionKotlinxIoTest`
-(which runs the full handshake state machine through the common code).
-The only thing that differs across targets is the engine backend, and
-the native engine is verified by the cinterop compile + the smoke test.
+## Native OpenSSL
 
-End-to-end handshake on a real native POSIX socket is also covered by
-`NativeTlsConnectionTest` (a real TCP loopback using
-`platform.posix.socket` / `bind` / `listen` / `accept` driving the
-public `tlsServer` / `tlsConnect` entry points). It is currently
-**excluded from the gradle test run** because the prebuilt `libcrypto.a`
-from the reference project was compiled against a different GLIBC than
-this system's runtime, so calls into it (e.g. `d2i_PrivateKey`) segfault.
-The file is kept in source for reference; the same code path runs fine
-through the JVM via `SslContextConfigTest` + the full
-`TlsConnectionKotlinxIoTest` handshake.
+Native targets don't depend on any prebuilt `.a` from outside the repo.
+On the first native build Gradle runs three tasks:
+
+1. `:downloadSsl` — fetches
+   `https://github.com/openssl/openssl/archive/refs/tags/openssl-3.0.3.zip`
+   into `build/openssl/openssl-3.0.3.zip`.
+2. `:extractSsl` — unzips it into `build/openssl/source/`.
+3. `:buildOpenssl<Target>` (one per native target) — `cd build/openssl/source
+   && ./Configure <target> no-shared no-tests no-ui-console no-asm no-async
+   no-err no-psk no-srp no-cms no-ts enable-tls1_3 && make -j$(nproc)
+   build_libs`. The resulting `libssl.a` + `libcrypto.a` are copied to
+   `build/openssl/<arch>/` and embedded into the Kotlin/Native binary
+   via `-include-binary`.
+
+All three are wired in `buildSrc/src/main/kotlin/pw/binom/tls/build/OpenSSLBuildTask.kt`;
+the per-arch `./Configure` target name and cross-compiler env vars
+(Android NDK, mingw-w64, Apple SDK) are configured in the same file.
+The 162 OpenSSL 3.0.3 headers needed by the cinterop (`def` and
+`include` block) are vendored under `src/nativeInterop/cinterop/openssl/`
+so the build doesn't depend on any external OpenSSL installation.
+
+One non-obvious bit: on Linux/Windows, OpenSSL 3.0.3 is built with
+`CFLAGS=-std=gnu17` to keep the resulting `.o` files from referencing
+`__isoc23_strtol` / `__isoc23_strtoul` / `__isoc23_sscanf`. Those
+symbols only exist in glibc 2.38+ and are only emitted when the
+compiler is in C23 mode (the gcc 14+ default). Kotlin/Native's
+bundled LLVM 21 `ld.lld` doesn't carry a glibc version map and
+fails on the versioned lookup. `-std=gnu17` forces the older,
+always-present `strtol` / `strtoul` / `sscanf` and the link
+succeeds.
 
 ## Build
 
 ```bash
 ./gradlew jvmTest           # JVM build + tests
-./gradlew linuxX64Test      # Native build + tests
+./gradlew linuxX64Test      # Native build + tests (downloads + builds OpenSSL on first run)
 ./gradlew allTests          # every target's tests (jvm + 11 native)
 ./gradlew build             # everything
 ```
