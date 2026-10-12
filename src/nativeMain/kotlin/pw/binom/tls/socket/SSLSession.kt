@@ -5,7 +5,6 @@ package pw.binom.tls.socket
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.refTo
 import openssl3.BIO
-import openssl3.BIO_free
 import openssl3.BIO_new
 import openssl3.BIO_read
 import openssl3.BIO_s_mem
@@ -69,9 +68,10 @@ actual class SSLSession internal constructor(
             SSL_shutdown(ssl)
         } catch (_: Throwable) {
         }
+        // SSL_set_bio() in init{} transferred ownership of both BIOs to the
+        // SSL object, so SSL_free() frees them — freeing them again here
+        // would be a double free (SIGSEGV in BIO_free).
         SSL_free(ssl)
-        BIO_free(readBio)
-        BIO_free(writeBio)
     }
 
     private fun mapStatus(n: Int): SSLStatus {

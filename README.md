@@ -271,43 +271,39 @@ transport, and tries again. The semantics intentionally mirror OpenSSL's
 | Target                 | TLS impl                | Link                          |
 |------------------------|-------------------------|-------------------------------|
 | `jvm`                  | `javax.net.ssl.SSLEngine` (JSSE) | JDK built-ins          |
-| `linuxX64`             | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `linuxArm64`           | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `androidNativeArm32`   | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `androidNativeArm64`   | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `androidNativeX64`     | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `androidNativeX86`     | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `mingwX64`             | OpenSSL 3 (cinterop)    | prebuilt `libssl.a` + `libcrypto.a` |
-| `iosArm64`             | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
-| `iosX64`               | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
-| `iosSimulatorArm64`    | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
-| `macosArm64`           | OpenSSL 3 (cinterop)    | system / SDK (`-lssl -lcrypto`) |
+| `linuxX64`             | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `linuxArm64`           | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `androidNativeArm32`   | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `androidNativeArm64`   | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `androidNativeX64`     | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `androidNativeX86`     | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `mingwX64`             | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `iosArm64`             | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `iosX64`               | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `iosSimulatorArm64`    | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
+| `macosArm64`           | OpenSSL 3 (cinterop)    | self-built `libssl.a` + `libcrypto.a` |
 
 The library is published as a JVM klib/jar only — Android application
 consumers (minSdk 24+) and any other JVM host pick it up via Gradle
 the same way they pull kotlinx-io or OkHttp. `androidNative*`
 (Kotlin/Native → NDK) are the *separate* KMP targets that link the
-prebuilt OpenSSL `.a` files for native Android code.
+self-built OpenSSL `.a` files for native Android code.
 
-Native targets link against the **prebuilt** static `libssl.a` / `libcrypto.a`
-from the reference project
-(`/home/subochev/projects/WORK/pw.binom.io/ssl/build/openssl/<arch>/build`).
-This avoids the GLIBC versioned-symbol mismatch that the system
-`libssl.so.3` creates against the LLVM 21 toolchain. macOS and iOS fall
-back to the SDK's bundled OpenSSL via `-lssl -lcrypto`. The cinterop
-parses OpenSSL headers from
-`/home/subochev/projects/WORK/pw.binom.io/ssl/src/cinterop/include` (the
-reference project's complete 162-header set), scoped via
-`headerFilterOnly = openssl/**` so system headers (`<bits/floatn.h>` on
-aarch64, etc.) never enter the parse.
+Native targets link against `libssl.a` / `libcrypto.a` that this project
+**builds itself** (see [Native OpenSSL](#native-openssl)) — nothing is
+pulled from an external prebuilt or the system OpenSSL. This avoids the
+GLIBC versioned-symbol mismatch a system `libssl.so.3` would introduce
+against the LLVM 21 toolchain. The cinterop parses OpenSSL headers from
+`src/nativeInterop/cinterop/openssl/` (the vendored 162-header OpenSSL
+3.0.3 set), scoped via `headerFilter = openssl/**` so system headers
+(`<bits/floatn.h>` on aarch64, etc.) never enter the parse.
 
 > `dev.whyoleg.cryptography:cryptography-provider-openssl3-prebuilt` ships a
 > prebuilt `libcrypto.a` (12 MB) but **no `libssl.a`** — whyoleg is a
 > crypto-primitives library, not a TLS one, and its prebuilt covers the
 > primitives only. Switching to it for this library would require
 > additional plumbing (extract the `.a`, link it next to a libssl that
-> matches the same GLIBC). Documented as a follow-up, not required for
-> the current 4 jvmTest + 3 linuxX64Test green-build state.
+> matches the same GLIBC).
 
 ## Tests
 
@@ -317,22 +313,12 @@ aarch64, etc.) never enter the parse.
 | `TlsEndToEndTest` (server+client e2e) | ✅ (1)      | ✅       | ✅             |
 | `SslContextConfigTest`                | -          | ✅       | -             |
 | `NativeSslContextSmokeTest`           | -          | -       | ✅             |
-| `NativeTlsConnectionTest` (2)         | -          | -       | (manual)      |
 
 (1) `TlsEndToEndTest` lives in `commonTest` and runs identically on
 every target via a single `LoopbackServer` / `loopbackConnect` built on
 **ktor-network** (`io.ktor:ktor-network:3.6.0`, test-only dep). The
 same common source compiles for JVM and all native targets — there is
 no per-platform `expect`/`actual` split for the loopback fixture.
-
-(2) `NativeTlsConnectionTest` (real POSIX socket loopback driving
-`platform.posix` `socket` / `bind` / `listen` / `accept` through the
-public `tlsServer` / `tlsConnect` entry points) is **not** part of the
-gradle test run. The same code path is covered by `TlsEndToEndTest`
-above (which uses ktor-network sockets as the transport), so the
-loopback-pure-POSIX variant is kept in source as a regression
-sanity check; if you want to run it, invoke it directly via JUnit 4
-on the linked test binary.
 
 ## Native OpenSSL
 
@@ -350,22 +336,41 @@ On the first native build Gradle runs three tasks:
    `build/openssl/<arch>/` and embedded into the Kotlin/Native binary
    via `-include-binary`.
 
-All three are wired in `buildSrc/src/main/kotlin/pw/binom/tls/build/OpenSSLBuildTask.kt`;
-the per-arch `./Configure` target name and cross-compiler env vars
-(Android NDK, mingw-w64, Apple SDK) are configured in the same file.
-The 162 OpenSSL 3.0.3 headers needed by the cinterop (`def` and
+The cross toolchain (compiler, archiver, sysroot, per-target
+`-target` / `--sysroot` / `--gcc-toolchain` / `-isystem` flags) comes from
+the [`pw.binom.kn-clang`](https://github.com/caffeine-mgn/kn-clang-compiler-plugin)
+plugin's `knClang.toolchain(target)`, which resolves everything from the
+selected Kotlin/Native distribution's `konan.properties` and materialises any
+missing sysroot/NDK/mingw into `~/.konan/dependencies/` on demand. So each
+target is configured with exactly the flag set the Kotlin/Native backend
+itself uses — no hand-rolled sysroot probing, no `$ANDROID_NDK_HOME`, no
+Homebrew cross-`gcc`.
+
+All three tasks are wired in
+`buildSrc/src/main/kotlin/pw/binom/tls/gradle/OpenSSLBuildTask.kt` (the task
+stays K/N-agnostic: it only receives a configure name, a CFLAGS line and an
+env map). The 162 OpenSSL 3.0.3 headers needed by the cinterop (`def` and
 `include` block) are vendored under `src/nativeInterop/cinterop/openssl/`
 so the build doesn't depend on any external OpenSSL installation.
 
-One non-obvious bit: on Linux/Windows, OpenSSL 3.0.3 is built with
-`CFLAGS=-std=gnu17` to keep the resulting `.o` files from referencing
-`__isoc23_strtol` / `__isoc23_strtoul` / `__isoc23_sscanf`. Those
-symbols only exist in glibc 2.38+ and are only emitted when the
-compiler is in C23 mode (the gcc 14+ default). Kotlin/Native's
-bundled LLVM 21 `ld.lld` doesn't carry a glibc version map and
-fails on the versioned lookup. `-std=gnu17` forces the older,
-always-present `strtol` / `strtoul` / `sscanf` and the link
-succeeds.
+Two non-obvious CFLAGS details:
+
+- Linux host builds pass `--gcc-toolchain=<gcc-8>` next to `--sysroot=…` so
+  clang resolves the sysroot's glibc 2.19/2.25 headers (and libc) instead of
+  the host gcc 16 headers. Without it, clang picks the host glibc 2.38+
+  headers and the `.o` files reference versioned `__isoc23_strtol` /
+  `__isoc23_strtoul` / `__isoc23_sscanf`, which the sysroot's libc does not
+  define, and `ld.lld` fails the link.
+- glibc sysroots additionally get `-D_GNU_SOURCE` (their `strcasecmp_l` is
+  only declared under POSIX-2008 macros). Android's bionic must **not** see
+  it — bionic's `strerror_r` returns `int`, and `_GNU_SOURCE` would make
+  OpenSSL pick the GNU `char *` variant.
+
+For Android we use the generic `linux-*` OpenSSL config names (not OpenSSL's
+own `android-*` configs, which insist on a full NDK layout); the plugin's
+flags already carry `-target *-linux-android` — which makes clang define
+`__ANDROID__`, driving OpenSSL's bionic code paths — plus the bionic sysroot
+and `-D__ANDROID_API__=21`.
 
 ## Build
 
