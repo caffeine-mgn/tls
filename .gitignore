@@ -8,6 +8,8 @@ build/
 .kotlin/
 .cortexkit/
 .DS_Store
+.agentbridge/
+.veai/
 
 # Local config
 local.properties
