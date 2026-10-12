@@ -77,6 +77,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.ktor.network)
         }
         jvmMain.dependencies {
             implementation(libs.bouncycastle.bcprov)

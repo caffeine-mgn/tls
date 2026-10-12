@@ -119,13 +119,18 @@ aarch64, etc.) never enter the parse.
 | `NativeSslContextSmokeTest`           | -          | -       | -              | ✅             |
 
 (1) `TlsEndToEndTest` lives in `commonTest` and runs identically on every
-target via the platform-agnostic `LoopbackServer` expect/actual. On JVM
-and Android it runs the full handshake. On native Linux it currently
-self-skips because the prebuilt `libcrypto.a` from the reference project
-was compiled against an older GLIBC and segfaults inside the TLS
-handshake (`d2i_PrivateKey`) on modern hosts; the smoke test
-(`NativeSslContextSmokeTest`) still verifies the cinterop + linker chain
-is intact on linuxX64.
+target via a single `LoopbackServer` / `loopbackConnect` built on
+**ktor-network** (`io.ktor:ktor-network:3.6.0`, test-only dep). The same
+common source compiles for JVM, Android, and all native targets — there
+is no per-platform `expect`/`actual` split for the loopback fixture.
+
+On JVM and Android the test runs the full handshake end-to-end. On
+native Linux it currently self-skips (`isE2ESupported()` returns false
+via the per-target expect/actual) because the prebuilt `libcrypto.a`
+from the reference project was compiled against an older GLIBC and
+segfaults inside the TLS handshake on modern hosts. The smoke test
+(`NativeSslContextSmokeTest`) still verifies the cinterop + linker
+chain is intact on linuxX64.
 
 The `NativeSslContextSmokeTest` verifies the native cinterop layer
 links, the `openssl3.*` package is reachable, and OpenSSL can be

@@ -6,8 +6,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.newSingleThreadContext
-import kotlinx.io.buffered
 import pw.binom.tls.testutil.TestCert
 import pw.binom.tls.testutil.TestCertificateGenerator
 import kotlin.test.Test
@@ -22,20 +20,16 @@ class TlsEndToEndTest {
         val cert = TestCertificateGenerator.generateSelfSigned()
         val request = "GET /ping HTTP/1.0\r\nHost: test\r\n\r\n".encodeToByteArray()
 
-        val server = LoopbackServer()
+        val server = loopbackServer()
         try {
-            val serverDispatcher = newSingleThreadContext("tls-server")
-            val clientDispatcher = Dispatchers.Default.limitedParallelism(1)
-                val serverScope = CoroutineScope(SupervisorJob() + serverDispatcher)
-            val clientScope = CoroutineScope(SupervisorJob() + clientDispatcher)
+            val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val serverDeferred = serverScope.async { runServer(server, cert) }
-                val clientResult = clientScope.async { runClient(server.port, request) }.await()
+            val clientResult = clientScope.async { runClient(server.port, request) }.await()
             val serverResult = try {
                 withTimeout(10_000) { serverDeferred.await() }
             } catch (e: Throwable) {
                 fail("server failed: ${e.message}")
-            } finally {
-                serverDispatcher.close()
             }
             assertContentEquals(request, serverResult)
             assertContentEquals(request, clientResult)
@@ -47,11 +41,11 @@ class TlsEndToEndTest {
     private suspend fun runServer(server: LoopbackServer, cert: TestCert): ByteArray {
         val sock = server.accept()
         sock.use {
-                val source = sock.source().buffered()
-            val sink = sock.sink().buffered()
-                val ctx = SSLContext.server(listOf(cert.certDer), cert.keyDer)
-                val conn = source.tlsServer(sink, ctx)
-                val expectedSize = "GET /ping HTTP/1.0\r\nHost: test\r\n\r\n".length
+            val source = sock.source()
+            val sink = sock.sink()
+            val ctx = SSLContext.server(listOf(cert.certDer), cert.keyDer)
+            val conn = source.tlsServer(sink, ctx)
+            val expectedSize = "GET /ping HTTP/1.0\r\nHost: test\r\n\r\n".length
             val buf = ByteArray(expectedSize)
             var total = 0
             while (total < buf.size) {
@@ -66,10 +60,10 @@ class TlsEndToEndTest {
     }
 
     private suspend fun runClient(port: Int, request: ByteArray): ByteArray {
-        val sock = loopbackConnect(port)
+        val sock = loopbackConnect(port = port)
         sock.use {
-            val source = sock.source().buffered()
-            val sink = sock.sink().buffered()
+            val source = sock.source()
+            val sink = sock.sink()
             val ctx = SSLContext.client(trustAll = true)
             val conn = source.tlsClient(sink, ctx, serverName = "test", port = port)
             conn.write(request)

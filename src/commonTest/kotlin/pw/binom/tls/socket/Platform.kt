@@ -5,9 +5,9 @@ package pw.binom.tls.socket
  * (server+client+TLS protocol over a loopback socket).
  *
  * - JVM and Android: always true (JSSE runs in-process)
- * - Native Linux: true when the linked libssl/libcrypto is compatible
+ * - Native Linux: false when the linked libssl/libcrypto is incompatible
  *   with the host GLIBC. The prebuilt `.a` from the reference project
- *   is built against an older GLIBC and segfaults on modern hosts, so
+ *   was built against an older GLIBC and segfaults on modern hosts, so
  *   native tests fall back to a smoke test in `NativeSslContextSmokeTest`.
  * - Other native targets: not exercised in this environment.
  */

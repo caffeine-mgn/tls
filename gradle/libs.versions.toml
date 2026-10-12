@@ -5,6 +5,7 @@ kotlinx-atomicfu = "0.33.0"
 kotlinx-coroutines = "1.10.2"
 dokka = "2.2.0"
 detekt = "2.0.0-alpha.6"
+ktor = "3.6.0"
 ktlint = "14.2.0"
 vanniktech = "0.37.0"
 bouncycastle-bcprov = "1.83"
@@ -24,6 +25,7 @@ bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref 
 cryptography-provider-openssl3-prebuilt = { module = "dev.whyoleg.cryptography:cryptography-provider-openssl3-prebuilt", version.ref = "cryptography" }
 
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version = "5.11.4" }
+ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
