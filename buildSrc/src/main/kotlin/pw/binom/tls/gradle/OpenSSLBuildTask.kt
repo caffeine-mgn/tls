@@ -16,8 +16,17 @@ import java.io.File
 
 /**
  * Builds OpenSSL 3.0.3 as static libraries (libssl.a + libcrypto.a) for a
- * specific KMP target by running ./Configure + make in the OpenSSL source
- * tree.
+ * specific KMP target by running Configure + make **out-of-source**: the
+ * extracted source tree ([sourceDir]) is read-only and each target gets its
+ * own build directory (the parent of [libssl]) where `Configure` generates
+ * the Makefile and `make` writes the objects and archives.
+ *
+ * Out-of-source is required for correctness: several targets are built by
+ * different `buildOpenssl*` tasks, and building them in the shared source
+ * tree left a foreign-arch `libssl.a` behind (e.g. an ELF archive copied
+ * into the mingw klib), which then failed at link time with "unknown file
+ * type". A per-target build dir makes the tasks independent and
+ * parallel-safe.
  *
  * This task is intentionally K/N-API-agnostic: it only knows about a
  * `configureName` (e.g. `linux-x86_64`), a fully-formed `cflags` line
@@ -29,10 +38,10 @@ import java.io.File
  * distribution's `konan.properties` — so the task never touches the K/N
  * Gradle plugin API and buildSrc keeps its minimal classpath.
  *
- * The configured source tree is REUSED across invocations: each run
- * re-runs ./Configure (idempotent — overwrites Makefile + configdata.pm)
- * and `make build_libs` (OpenSSL's make only rebuilds what changed).
- * To force a clean rebuild, delete the source dir.
+ * Each run re-runs Configure (idempotent — overwrites Makefile +
+ * configdata.pm) and `make build_libs` (only rebuilds what changed in the
+ * per-target build dir). To force a clean rebuild, delete the per-target
+ * build dir (the parent of [libssl]).
  */
 abstract class OpenSSLBuildTask : DefaultTask() {
 
@@ -67,12 +76,25 @@ abstract class OpenSSLBuildTask : DefaultTask() {
         description = "Builds OpenSSL 3.0.3 static libs for the given KMP target"
     }
 
+    private companion object {
+        const val MAKE_ATTEMPTS = 3
+    }
+
     @TaskAction
     fun build() {
         val src = sourceDir.get().asFile
         check(File(src, "Configure").exists()) {
             "OpenSSL source not extracted at $src (missing ./Configure). Run :extractSsl first."
         }
+
+        val outSsl = libssl.get().asFile
+        val outCrypto = libcrypto.get().asFile
+        val buildDir = outSsl.parentFile
+        buildDir.mkdirs()
+        // Drop stale libs so a partial/failed build can't leave a foreign-arch
+        // archive at the declared output path.
+        outSsl.delete()
+        outCrypto.delete()
 
         val baseArgs = listOf(
             "no-shared", "no-tests", "no-ui-console", "no-asm", "no-async",
@@ -82,29 +104,39 @@ abstract class OpenSSLBuildTask : DefaultTask() {
         val cflagsValue = cflags.get()
         val env = extraEnv.get()
 
-        // OpenSSL's ./Configure reads CFLAGS from the environment verbatim.
+        // OpenSSL's Configure reads CFLAGS from the environment verbatim.
         // The caller has already put the full cross toolchain flag set in
         // there (`-target`, `--sysroot`, `--gcc-toolchain`, `-isystem`,
         // `-D_GNU_SOURCE` on glibc sysroots), so Configure just forwards it.
         val fullEnv = env + ("CFLAGS" to cflagsValue)
+        val configure = File(src, "Configure").absolutePath
 
-        logger.lifecycle("=== OpenSSL $targetName: ./Configure $cfgName (CFLAGS='$cflagsValue') ===")
-        runProcess(workingDir = src, args = listOf("./Configure", cfgName) + baseArgs, env = fullEnv)
+        logger.lifecycle("=== OpenSSL $targetName: $configure $cfgName (CFLAGS='$cflagsValue') in $buildDir ===")
+        runProcess(workingDir = buildDir, args = listOf(configure, cfgName) + baseArgs, env = fullEnv)
 
-        logger.lifecycle("=== OpenSSL $targetName: make -j${jobs.get()} build_libs ===")
-        runProcess(workingDir = src, args = listOf("make", "-j${jobs.get()}", "build_libs"), env = fullEnv)
+        // `make -j<cores> build_libs` on OpenSSL 3.0.3 is occasionally racy:
+        // the archiver can start before some object finishes compiling
+        // ("<obj>.o: No such file or directory" in the `ar` line). `make` is
+        // incremental, so re-running it simply finishes the missing objects.
+        val makeArgs = listOf("make", "-j${jobs.get()}", "build_libs")
+        var lastError: GradleException? = null
+        for (attempt in 1..MAKE_ATTEMPTS) {
+            try {
+                logger.lifecycle("=== OpenSSL $targetName: make -j${jobs.get()} build_libs (attempt $attempt/$MAKE_ATTEMPTS) ===")
+                runProcess(workingDir = buildDir, args = makeArgs, env = fullEnv)
+                lastError = null
+                break
+            } catch (e: GradleException) {
+                lastError = e
+                logger.lifecycle("=== OpenSSL $targetName: make failed (attempt $attempt/$MAKE_ATTEMPTS), retrying ===")
+            }
+        }
+        lastError?.let { throw it }
 
-        val builtSsl = File(src, "libssl.a")
-        val builtCrypto = File(src, "libcrypto.a")
-        check(builtSsl.exists()) { "libssl.a not produced in $src for $targetName" }
-        check(builtCrypto.exists()) { "libcrypto.a not produced in $src for $targetName" }
+        check(outSsl.exists()) { "libssl.a not produced at $outSsl for $targetName" }
+        check(outCrypto.exists()) { "libcrypto.a not produced at $outCrypto for $targetName" }
 
-        val outDir = libssl.get().asFile.parentFile
-        outDir.mkdirs()
-        builtSsl.copyTo(libssl.get().asFile, overwrite = true)
-        builtCrypto.copyTo(libcrypto.get().asFile, overwrite = true)
-
-        logger.lifecycle("=== OpenSSL $targetName: ${libssl.get().asFile} + ${libcrypto.get().asFile} ===")
+        logger.lifecycle("=== OpenSSL $targetName: $outSsl + $outCrypto ===")
     }
 
     private fun runProcess(workingDir: File, args: List<String>, env: Map<String, String>) {

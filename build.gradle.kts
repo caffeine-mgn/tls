@@ -1,8 +1,10 @@
 import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.konan.target.Family
+import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import pw.binom.kotlin.clang.KnClangExtension
 import pw.binom.tls.gradle.OpenSSLBuildTask
+import pw.binom.tls.gradle.OpenSslBuildGuard
 import java.io.File
 import java.net.URI
 
@@ -159,8 +161,13 @@ fun opensslToolchain(kt: KonanTarget): OpenSSLToolchain {
     return OpenSSLToolchain(opensslConfigureName(kt), cflags, env)
 }
 
+val opensslBuildGuard = gradle.sharedServices.registerIfAbsent("opensslBuildGuard", OpenSslBuildGuard::class) {
+    maxParallelUsages.set(1)
+}
+
 fun opensslBuildTask(name: String, kmpTargetName: String, kt: KonanTarget) =
     tasks.register<OpenSSLBuildTask>("buildOpenssl$name") {
+        usesService(opensslBuildGuard)
         dependsOn(extractSsl)
         sourceDir.set(layout.buildDirectory.dir("openssl/source"))
         targetName.set(kt.name)
@@ -227,11 +234,17 @@ kotlin {
     linuxX64()
     linuxArm64()
 
-    iosArm64()
-    iosSimulatorArm64()
-    iosX64()
+    // Apple targets require a macOS host (Kotlin/Native has no cross-compiler
+    // for them, and OpenSSL must be built with the Apple SDK). Declaring them
+    // on Linux makes the metadata/publish tasks demand an iOS OpenSSL build,
+    // which cannot succeed. Publish Apple artefacts from a mac.
+    if (HostManager.hostIsMac) {
+        iosArm64()
+        iosSimulatorArm64()
+        iosX64()
 
-    macosArm64()
+        macosArm64()
+    }
 
     mingwX64()
 
